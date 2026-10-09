@@ -103,5 +103,37 @@ else
     echo "Sokuji postinstall: Warning - Virtual audio driver not found in app bundle"
 fi
 
+# Big Sur compatibility: install a second, isolated 2ch virtual cable for
+# meeting/participant audio. The meeting app outputs into this device; Sokuji
+# reads it as an input and can safely play the translated participant voice on
+# the real headphones without recapturing itself.
+PARTICIPANT_SOURCE="/Applications/Sokuji.app/Contents/Resources/resources/drivers/SokujiParticipantAudio.driver"
+PARTICIPANT_DEST="$HAL_DIR/SokujiParticipantAudio.driver"
+
+if [ -d "$PARTICIPANT_SOURCE" ]; then
+    if [ -d "$PARTICIPANT_DEST" ] && diff -rq "$PARTICIPANT_SOURCE" "$PARTICIPANT_DEST" >/dev/null 2>&1; then
+        echo "Sokuji postinstall: Participant audio driver already installed and unchanged"
+    else
+        echo "Sokuji postinstall: Installing participant audio driver..."
+        PARTICIPANT_STAGING="$HAL_DIR/SokujiParticipantAudio.driver.installing"
+        rm -rf "$PARTICIPANT_STAGING"
+        if ! cp -R "$PARTICIPANT_SOURCE" "$PARTICIPANT_STAGING" || \
+           ! chown -R root:wheel "$PARTICIPANT_STAGING" || \
+           ! chmod -R 755 "$PARTICIPANT_STAGING"; then
+            rm -rf "$PARTICIPANT_STAGING"
+            echo "Sokuji postinstall: ERROR - Failed to stage participant audio driver"
+            exit 1
+        fi
+        rm -rf "$PARTICIPANT_DEST"
+        mv "$PARTICIPANT_STAGING" "$PARTICIPANT_DEST"
+        echo "Sokuji postinstall: Participant audio driver installed"
+        killall coreaudiod 2>/dev/null || \
+        launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null || \
+        launchctl kill SIGTERM system/com.apple.audio.coreaudiod 2>/dev/null || true
+    fi
+else
+    echo "Sokuji postinstall: Warning - participant audio driver not found in app bundle"
+fi
+
 echo "Sokuji postinstall: Installation completed"
 exit 0
