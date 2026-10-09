@@ -34,6 +34,15 @@ describe('replayBlocked', () => {
     })).toBe(false);
   });
 
+  it('allows an isolated Big Sur virtual-input source', () => {
+    expect(replayBlocked({
+      run: running,
+      platform: 'electron',
+      participantSourceId: 'legacy-input:BlackHole 2ch',
+      participantNoticeCodes: [],
+    })).toBe(false);
+  });
+
   it('blocks an application source that fell back to the whole system (capture lost)', () => {
     expect(replayBlocked({
       run: running,
