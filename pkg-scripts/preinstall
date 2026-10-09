@@ -18,6 +18,12 @@ if [ -d "/Library/Audio/Plug-Ins/HAL/SokujiVirtualAudio.driver" ]; then
     echo "Sokuji preinstall: Old driver removed"
 fi
 
+# Remove the Big Sur participant capture cable on reinstall.
+if [ -d "/Library/Audio/Plug-Ins/HAL/SokujiParticipantAudio.driver" ]; then
+    echo "Sokuji preinstall: Removing existing participant audio driver..."
+    rm -rf /Library/Audio/Plug-Ins/HAL/SokujiParticipantAudio.driver
+fi
+
 # Also check for the app in case of reinstallation
 if [ -d "/Applications/Sokuji.app" ]; then
     echo "Sokuji preinstall: Found existing Sokuji.app, will be replaced..."
