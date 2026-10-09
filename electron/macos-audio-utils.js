@@ -383,58 +383,83 @@ async function supportsSystemAudioCapture() {
 }
 
 /**
- * List available system audio sources
- * Whole-system capture first (unchanged default, captured via getDisplayMedia in
- * the renderer), then one entry per application the capture helper can target.
- * A missing or failing helper yields just the former.
- * @param {{host?: object}} deps - `host` is injected in tests
- * @returns {Promise<Array<{deviceId: string, label: string}>>} Array of system audio sources
+ * List available participant-audio sources for the Big Sur compatibility build.
+ *
+ * Modern Sokuji uses Core Audio process taps for per-application capture. Those
+ * APIs require macOS 14.2+, so the Big Sur build deliberately exposes:
+ *   1. whole-system loopback capture (getDisplayMedia / electron-audio-loopback)
+ *   2. isolated legacy virtual inputs such as BlackHole 2ch
+ *
+ * The isolated-device path is the preferred one for two-way spoken translation:
+ * route the meeting application's output to BlackHole, let Sokuji capture that
+ * input, and play the translated participant voice on the real headphones. This
+ * avoids recapturing Sokuji's own translated speech.
  */
-async function listSystemAudioSources({ host = audioHost } = {}) {
-  // No screen selection any more: the global tap needs no picker and no
-  // Screen Recording permission.
+const LEGACY_INPUT_PREFIX = 'legacy-input:';
+
+function isLegacyCaptureInput(name) {
+  return /blackhole|soundflower|loopback/i.test(String(name || ''))
+    && !/sokuji/i.test(String(name || ''));
+}
+
+async function listSystemAudioSources() {
   const system = {
     deviceId: 'desktop-audio-loopback',
     label: 'System Audio (All Applications)'
   };
-  // The doc above promises that a missing or failing helper still yields the
-  // system source; an unguarded rejection would instead leave the renderer with
-  // no sources at all, including whole-system capture.
-  let apps = [];
+
+  let inputs = [];
   try {
-    apps = await host.listAppSources();
-  } catch (e) {
-    console.warn('[Sokuji] [macOS Audio] Application source listing failed:', e.message);
+    const devices = await getAudioDevices();
+    inputs = Array.isArray(devices?.inputs) ? devices.inputs : [];
+  } catch (error) {
+    console.warn('[Sokuji] [macOS Big Sur] Could not enumerate legacy capture inputs:', error?.message || error);
   }
-  console.log(`[Sokuji] [macOS Audio] Listing system audio sources: ${apps.length} application(s)`);
-  return [system, ...apps];
+
+  const seen = new Set();
+  const legacy = [];
+  for (const device of inputs) {
+    const name = String(device?.name || '').trim();
+    if (!name || !isLegacyCaptureInput(name) || seen.has(name)) continue;
+    seen.add(name);
+    legacy.push({
+      deviceId: `${LEGACY_INPUT_PREFIX}${name}`,
+      label: `${name} (isolated Big Sur capture)`,
+      appKey: `${LEGACY_INPUT_PREFIX}${name}`
+    });
+  }
+
+  console.log(`[Sokuji] [macOS Big Sur] Participant sources: whole-system + ${legacy.length} isolated legacy input(s)`);
+  return [system, ...legacy];
 }
 
 /**
- * Connect to a system audio source
- * Records which capture path the renderer should take. Nothing is spawned here:
- * the helper starts when the session starts, via 'start-app-audio-capture'.
- * @param {string} sourceId - 'desktop-audio-loopback' or 'app:pid:<n>'
- * @param {{host?: object}} deps - `host` is injected in tests
- * @returns {Promise<{success: boolean, capture: 'app'|'system'}>} Result object
+ * Connect a participant-audio source.
+ *
+ * "legacy-input:<name>" is captured as an ordinary audio-input device by the
+ * renderer. Whole-system capture falls back to LoopbackRecorder, which uses
+ * electron-audio-loopback and Screen Recording permission on Big Sur.
  */
-async function connectSystemAudioSource(sourceId, { host = audioHost } = {}) {
-  console.log(`[Sokuji] [macOS Audio] Connect system audio source: ${sourceId}`);
-  // Both paths go through the helper on macOS. Whole-system capture used to use
-  // getDisplayMedia, which requires Screen Recording; a global Core Audio tap
-  // does the same job under the audio-capture grant the per-application path
-  // already needs, so macOS asks for one permission instead of two.
-  return { success: true, capture: 'app' };
+async function connectSystemAudioSource(sourceId) {
+  console.log(`[Sokuji] [macOS Big Sur] Connect participant source: ${sourceId}`);
+
+  if (typeof sourceId === 'string' && sourceId.startsWith(LEGACY_INPUT_PREFIX)) {
+    const monitorLabel = sourceId.slice(LEGACY_INPUT_PREFIX.length);
+    if (!monitorLabel) {
+      return { success: false, error: 'Legacy capture device name is empty.' };
+    }
+    return { success: true, capture: 'device', monitorLabel };
+  }
+
+  return { success: true, capture: 'system' };
 }
 
 /**
- * Disconnect from the current system audio source
- * @param {{host?: object}} deps - `host` is injected in tests
- * @returns {Promise<{success: boolean}>} Result object
+ * No native process tap is started in the Big Sur build, so disconnecting is a
+ * renderer-only operation.
  */
-async function disconnectSystemAudioSource({ host = audioHost } = {}) {
-  console.log('[Sokuji] [macOS Audio] Disconnect system audio source');
-  host.stopCapture();
+async function disconnectSystemAudioSource() {
+  console.log('[Sokuji] [macOS Big Sur] Disconnect participant source');
   return { success: true };
 }
 
