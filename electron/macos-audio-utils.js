@@ -398,8 +398,10 @@ async function supportsSystemAudioCapture() {
 const LEGACY_INPUT_PREFIX = 'legacy-input:';
 
 function isLegacyCaptureInput(name) {
-  return /blackhole|soundflower|loopback/i.test(String(name || ''))
-    && !/sokuji/i.test(String(name || ''));
+  const value = String(name || '');
+  if (/sokuji participant audio/i.test(value)) return true;
+  return /blackhole|soundflower|loopback/i.test(value)
+    && !/sokuji/i.test(value);
 }
 
 async function listSystemAudioSources() {
