@@ -399,7 +399,7 @@ const LEGACY_INPUT_PREFIX = 'legacy-input:';
 
 function isLegacyCaptureInput(name) {
   const value = String(name || '');
-  if (/sokuji participant audio/i.test(value)) return true;
+  if (/sokuji ?participant ?audio/i.test(value)) return true;
   return /blackhole|soundflower|loopback/i.test(value)
     && !/sokuji/i.test(value);
 }
