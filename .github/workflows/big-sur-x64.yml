@@ -41,6 +41,12 @@ jobs:
           echo "Electron: $(node -p "require('electron/package.json').version")"
           test "$(node -p "require('electron/package.json').version")" = "37.10.3"
 
+      - name: Run Big Sur compatibility tests
+        run: >-
+          npx vitest run
+          src/lib/modern-audio/participantSource.test.ts
+          src/components/MainPanel/panel/replayGate.test.ts
+
       - name: Build renderer and main process
         run: npm run build
         env:
