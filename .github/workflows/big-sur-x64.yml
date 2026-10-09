@@ -1,0 +1,80 @@
+name: Big Sur x64 Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - big-sur-x64
+    paths:
+      - 'package.json'
+      - 'electron/**'
+      - 'src/**'
+      - 'resources/**'
+      - 'pkg-scripts/**'
+      - '.github/workflows/big-sur-x64.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-bigsur-x64:
+    name: macOS 11 Intel package
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies for Electron 37
+        run: npm install --no-audit --no-fund
+
+      - name: Verify Electron version
+        run: |
+          echo "Electron: $(node -p "require('electron/package.json').version")"
+          test "$(node -p "require('electron/package.json').version")" = "37.10.3"
+
+      - name: Build renderer and main process
+        run: npm run build
+        env:
+          CI: "false"
+          VITE_BACKEND_URL: https://sokuji-api.kizuna.ai
+          VITE_ENVIRONMENT: production
+          VITE_ENABLE_KIZUNA_AI: "false"
+          VITE_ENABLE_LOCAL_NATIVE: "false"
+          VITE_ENABLED_PROVIDERS: ""
+          VITE_ENABLE_DEBUG: "true"
+          VITE_ENABLE_ANALYTICS: "false"
+
+      # Do not build the modern macOS audio-host helper here. It uses Core Audio
+      # process taps whose deployment target is macOS 14.2. Big Sur capture is
+      # implemented by the compatibility paths in electron/macos-audio-utils.js.
+      - name: Build unsigned Intel PKG
+        run: npx electron-builder --mac pkg --x64 --publish never -c.directories.output=out/bigsur
+        env:
+          CI: "false"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify Big Sur deployment target
+        run: |
+          APP="out/bigsur/mac/Sokuji.app"
+          if [ -d "$APP" ]; then
+            /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist"
+          fi
+          ls -lh out/bigsur/*.pkg
+          test -n "$(find out/bigsur -maxdepth 1 -name '*.pkg' -print -quit)"
+
+      - name: Upload Big Sur installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sokuji-0.43.4-BigSur-x64
+          path: out/bigsur/*.pkg
+          if-no-files-found: error
+          retention-days: 14
