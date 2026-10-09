@@ -13,14 +13,13 @@ const PARTICIPANT_SPEECH = 'settings.routing.participantSpeech';
 
 /**
  * Whether the participant-speech switch shows. The owner's choice of
- * 2026-10-01: hidden, and participant speech kept off, until the translated
- * audio's playback is reworked — an application capture that widens to the
- * whole system mid-run would still play Other's translation on the real
- * device. While off, `load()` does not read the saved choice, so one saved
- * while the switch showed cannot turn speech on unseen; the saved value is
- * left as it was, not rewritten. Showing it again is this line.
+ * Upstream keeps this hidden because whole-system capture can recapture
+ * translated participant audio. The Big Sur compatibility build exposes it:
+ * participantSpeechHeard() still disables playback for whole-system capture,
+ * while isolated BlackHole/legacy-input sources are safe and can speak the
+ * translated participant audio on the real output device.
  */
-export const PARTICIPANT_SPEECH_SHOWN = false;
+export const PARTICIPANT_SPEECH_SHOWN = true;
 
 interface RoutingStore {
   meeting: boolean;
