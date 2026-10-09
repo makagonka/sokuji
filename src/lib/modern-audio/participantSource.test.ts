@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveParticipantSourceId, isApplicationSource, needsLoopbackStream, SYSTEM_PARTICIPANT_SOURCE_ID } from './participantSource';
+import { resolveParticipantSourceId, isApplicationSource, isLegacyDeviceSource, needsLoopbackStream, SYSTEM_PARTICIPANT_SOURCE_ID } from './participantSource';
 
 describe('resolveParticipantSourceId', () => {
   it('returns the selected application source id', () => {
@@ -46,10 +46,17 @@ describe('isApplicationSource', () => {
   });
 });
 
-// Regression guard (issue #335): whole-system capture on macOS demanded Screen
-// Recording, a second permission for a feature whose per-application half
-// already worked under "System Audio Recording Only". A global Core Audio tap
-// serves whole-system under that same grant, so the gate must not fire there.
+describe('isLegacyDeviceSource', () => {
+  it('recognises Big Sur isolated virtual-input capture', () => {
+    expect(isLegacyDeviceSource('legacy-input:BlackHole 2ch')).toBe(true);
+    expect(isLegacyDeviceSource(SYSTEM_PARTICIPANT_SOURCE_ID)).toBe(false);
+    expect(isLegacyDeviceSource('app:42')).toBe(false);
+  });
+});
+
+// Big Sur compatibility build: whole-system capture falls back to
+// getDisplayMedia/electron-audio-loopback, while legacy virtual inputs are
+// ordinary isolated audio-input devices and do not need Screen Recording.
 describe('needsLoopbackStream', () => {
   // getOperatingSystem() reads navigator.platform, not the user agent.
   const setPlatform = (platform: string) => {
@@ -66,8 +73,13 @@ describe('needsLoopbackStream', () => {
     expect(needsLoopbackStream(SYSTEM_PARTICIPANT_SOURCE_ID)).toBe(true);
   });
 
-  it('does NOT need one for whole-system capture on macOS', () => {
+  it('needs one for whole-system capture on macOS Big Sur', () => {
     setPlatform('MacIntel');
-    expect(needsLoopbackStream(SYSTEM_PARTICIPANT_SOURCE_ID)).toBe(false);
+    expect(needsLoopbackStream(SYSTEM_PARTICIPANT_SOURCE_ID)).toBe(true);
+  });
+
+  it('does not need loopback for an isolated Big Sur virtual input', () => {
+    setPlatform('MacIntel');
+    expect(needsLoopbackStream('legacy-input:BlackHole 2ch')).toBe(false);
   });
 });
