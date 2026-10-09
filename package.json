@@ -1,7 +1,7 @@
 {
   "name": "sokuji",
   "productName": "Sokuji",
-  "version": "0.43.4",
+  "version": "0.43.4-bigsur.1",
   "sidecarVersion": "0.4.0",
   "private": true,
   "main": "dist-electron/main.js",
@@ -83,14 +83,15 @@
       ],
       "category": "public.app-category.utilities",
       "icon": "assets/icon.icns",
-      "identity": "Sokuji Code Signing",
+      "identity": null,
       "hardenedRuntime": true,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "extendInfo": {
         "NSDownloadsFolderUsageDescription": "Sokuji saves conversation transcripts to your Downloads folder when auto-save is on."
       },
-      "notarize": false
+      "notarize": false,
+      "minimumSystemVersion": "11.0.0"
     },
     "pkg": {
       "scripts": "../pkg-scripts",
@@ -114,7 +115,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "kizuna-ai-lab",
+      "owner": "makagonka",
       "repo": "sokuji"
     },
     "afterPack": "./scripts/electron-builder-fuses.js"
@@ -157,7 +158,7 @@
     "better-auth": "^1.6.13",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "44.5.1",
+    "electron": "37.10.3",
     "electron-builder": "^26.16.1",
     "fake-indexeddb": "^6.2.5",
     "i18next": "^25.2.1",
