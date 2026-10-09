@@ -1,5 +1,5 @@
 import type { AudioDevice } from '../../stores/audioStore';
-import { isLoopbackPlatform, isMacOS } from '../../utils/environment';
+import { isLoopbackPlatform } from '../../utils/environment';
 
 /** Whole-system capture - the participant source used when nothing else is chosen. */
 export const SYSTEM_PARTICIPANT_SOURCE_ID = 'desktop-audio-loopback';
@@ -31,6 +31,16 @@ export function isApplicationSource(deviceId: string | null | undefined): boolea
   return typeof deviceId === 'string' && deviceId.startsWith('app:');
 }
 
+/** Big Sur compatibility source: an isolated virtual input such as BlackHole. */
+export function isLegacyDeviceSource(deviceId: string | null | undefined): boolean {
+  return typeof deviceId === 'string' && deviceId.startsWith('legacy-input:');
+}
+
+/** A source whose translated playback is not fed back into participant capture. */
+export function isIsolatedParticipantSource(deviceId: string | null | undefined): boolean {
+  return isApplicationSource(deviceId) || isLegacyDeviceSource(deviceId);
+}
+
 /**
  * Whether starting this participant source needs a whole-system getDisplayMedia
  * stream, which on macOS additionally demands Screen Recording.
@@ -41,8 +51,9 @@ export function isApplicationSource(deviceId: string | null | undefined): boolea
  */
 export function needsLoopbackStream(deviceId: string | null | undefined): boolean {
   if (!isLoopbackPlatform()) return false;
-  if (isApplicationSource(deviceId)) return false;
-  if (isMacOS()) return false;
+  if (isIsolatedParticipantSource(deviceId)) return false;
+  // The Big Sur x64 build uses getDisplayMedia/electron-audio-loopback for
+  // whole-system capture on macOS, so Screen Recording is required there too.
   return true;
 }
 
@@ -58,5 +69,5 @@ export function needsLoopbackStream(deviceId: string | null | undefined): boolea
  * share, so what the switch shows is what the run does.
  */
 export function participantSpeechHeard(platform: string, participantSourceId: string | null | undefined): boolean {
-  return platform !== 'electron' || isApplicationSource(participantSourceId);
+  return platform !== 'electron' || isIsolatedParticipantSource(participantSourceId);
 }
