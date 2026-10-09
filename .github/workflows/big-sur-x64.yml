@@ -11,6 +11,7 @@ on:
       - 'src/**'
       - 'resources/**'
       - 'pkg-scripts/**'
+      - 'scripts/**'
       - '.github/workflows/big-sur-x64.yml'
 
 permissions:
@@ -26,6 +27,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -46,6 +48,14 @@ jobs:
           npx vitest run
           src/lib/modern-audio/participantSource.test.ts
           src/components/MainPanel/panel/replayGate.test.ts
+
+      - name: Build Big Sur participant audio cable
+        run: bash scripts/build-bigsur-participant-driver.sh
+
+      - name: Verify participant cable
+        run: |
+          test -f resources/drivers/SokujiParticipantAudio.driver/Contents/MacOS/SokujiParticipantAudio
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' resources/drivers/SokujiParticipantAudio.driver/Contents/Info.plist
 
       - name: Build renderer and main process
         run: npm run build
