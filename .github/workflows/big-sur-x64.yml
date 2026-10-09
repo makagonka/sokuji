@@ -56,6 +56,8 @@ jobs:
         run: |
           test -f resources/drivers/SokujiParticipantAudio.driver/Contents/MacOS/SokujiParticipantAudio
           /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' resources/drivers/SokujiParticipantAudio.driver/Contents/Info.plist
+          codesign --verify --deep --strict resources/drivers/SokujiParticipantAudio.driver
+          codesign -dv --verbose=2 resources/drivers/SokujiParticipantAudio.driver 2>&1 | grep -E 'Identifier|Signature|TeamIdentifier'
 
       - name: Build renderer and main process
         run: npm run build
