@@ -7,7 +7,7 @@ set -euo pipefail
 
 DRIVER_NAME="SokujiParticipantAudio"
 BUNDLE_ID="com.sokuji.participantaudio"
-DEVICE_NAME="Sokuji Participant Audio"
+DEVICE_NAME="SokujiParticipantAudio"
 PRODUCT_NAME="SokujiParticipantAudio"
 CHANNELS=2
 PLUGIN_UUID="17c11cb7-8e45-4bd7-bf0a-41a17da03e31"
