@@ -68,6 +68,14 @@ PLIST="$DEST/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFPlugInTypes:443ABAB8-E7B3-491A-B985-BEB9187030DB dict" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :CFPlugInTypes:443ABAB8-E7B3-491A-B985-BEB9187030DB:0 string $PLUGIN_UUID" "$PLIST"
 
+# CoreAudio on Big Sur refuses some unsigned third-party HAL bundles even when
+# the Mach-O itself is otherwise compatible. We cannot use the upstream
+# Developer ID in this fork, so give the local compatibility driver an ad-hoc
+# code signature. This preserves the old-mac deployment target while making
+# the bundle structurally signed for CoreAudio.
+codesign --force --deep --sign - "$DEST"
+codesign --verify --deep --strict "$DEST"
+
 rm -f BlackHole/SokujiParticipant.icns
 
 echo "Built $DEST"
