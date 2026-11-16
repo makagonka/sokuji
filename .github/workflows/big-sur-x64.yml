@@ -48,6 +48,7 @@ jobs:
           npx vitest run
           src/lib/modern-audio/participantSource.test.ts
           src/components/MainPanel/panel/replayGate.test.ts
+          src/lib/audio/appCapture.test.ts
 
       - name: Build Big Sur participant audio cable
         run: bash scripts/build-bigsur-participant-driver.sh
