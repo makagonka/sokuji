@@ -6,8 +6,10 @@
  */
 import type { LegName } from '../conversation/types';
 import type { Platform } from '../provider/types';
+import { participantSpeechHeard } from '../modern-audio/participantSource';
 import type { OpenSource, Source } from '../session/source';
 import useAudioStore from '../../stores/audioStore';
+import { useRoutingStore } from '../../stores/routingStore';
 import { getEnvironment } from '../../utils/environment';
 import { createEchoWatch, type EchoWatch } from './capture/echoWatch';
 import { openMic, type MicSettings } from './capture/mic';
@@ -80,13 +82,61 @@ export interface AppCaptureOptions {
   meterGate?(leg: LegName): boolean;
 }
 
+/**
+ * Big Sur spoken-interview guard.
+ *
+ * An isolated BlackHole input prevents the participant's translation from
+ * re-entering participant capture, but it does not prevent that same spoken
+ * translation from leaking into the *microphone* (including through the
+ * headset path, a selected built-in mic, or a buggy OS route). In that case
+ * Sokuji recognises its own Russian TTS as "Me" and sends an English echo
+ * back to the meeting.
+ *
+ * The participant's playback queue is the authoritative signal that Sokuji
+ * itself is speaking. Hold microphone frames while the queue is active and
+ * briefly afterward for output latency + the tail of room/headset echo.
+ *
+ * This trades full-duplex overlap for a stable interpreter conversation:
+ * the user cannot talk over the Russian interpretation. It never mutes the
+ * participant source itself and is inactive with participant speech off.
+ */
+export const PARTICIPANT_MIC_GUARD_TAIL_MS = 850;
+
+export function participantMicGate(
+  playback: Pick<Playback, 'queues'>,
+  platform: Platform,
+  now: () => number = Date.now,
+): () => boolean {
+  let untilMs = 0;
+  return () => {
+    const selected = audio().selectedParticipantSource?.deviceId;
+    const voicing = platform === 'electron'
+      && useRoutingStore.getState().participantSpeech
+      && participantSpeechHeard(platform, selected);
+    if (!voicing) {
+      untilMs = 0;
+      return false;
+    }
+    const current = now();
+    if (playback.queues.participant.pending > 0) {
+      untilMs = current + PARTICIPANT_MIC_GUARD_TAIL_MS;
+      return true;
+    }
+    return current < untilMs;
+  };
+}
+
 export function createAppCapture(playback: Playback, platform: Platform = getEnvironment(), options: AppCaptureOptions = {}): AppCapture {
   const { meterGate } = options;
   const echo = createEchoWatch(playback.ttsTap);
+  const blockMicWhileParticipantSpeaks = participantMicGate(playback, platform);
   const levels: Record<LegName, LevelMeter> = { speaker: createLevelMeter(), participant: createLevelMeter() };
 
   const open = (leg: LegName, signal: AbortSignal): Promise<Source> => {
-    if (leg === 'speaker') return openMic(micSettings(), signal);
+    if (leg === 'speaker') {
+      const settings = micSettings();
+      return openMic({ ...settings, muted: () => settings.muted() || blockMicWhileParticipantSpeaks() }, signal);
+    }
     if (platform === 'electron') return openSystemAudio(systemAudioSettings(), signal);
     if (platform === 'extension') return openTab(tabSettings(), signal);
     return Promise.reject(new Error('This build has no participant source.'));
