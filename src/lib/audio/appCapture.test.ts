@@ -26,12 +26,19 @@ vi.mock('./capture/echoWatch', () => ({
 }));
 
 import useAudioStore from '../../stores/audioStore';
-import { createAppCapture, micSettings, systemAudioSettings } from './appCapture';
+import { useRoutingStore } from '../../stores/routingStore';
+import { openMic } from './capture/mic';
+import { createAppCapture, micSettings, systemAudioSettings, participantMicGate, PARTICIPANT_MIC_GUARD_TAIL_MS } from './appCapture';
 import { LEVEL_BARS } from './levelMeter';
 import type { Playback } from './playback';
 
 function fakePlayback() {
-  return { passthrough: vi.fn(), ttsTap: { read: () => new Float32Array(0) } } as unknown as Playback & { passthrough: ReturnType<typeof vi.fn> };
+  const participant = { pending: 0 };
+  return {
+    passthrough: vi.fn(),
+    ttsTap: { read: () => new Float32Array(0) },
+    queues: { participant },
+  } as unknown as Playback & { passthrough: ReturnType<typeof vi.fn>; queues: { participant: { pending: number } } };
 }
 
 const clock = createVirtualClock(0);
@@ -190,5 +197,64 @@ describe('the settings the sources follow', () => {
     off();
     useAudioStore.setState({ isMicMuted: true });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Big Sur voiced-participant microphone guard', () => {
+  const source = { deviceId: 'legacy-input:BlackHole 2ch', label: 'BlackHole 2ch' };
+
+  beforeEach(() => {
+    useAudioStore.setState({ selectedParticipantSource: source, isMicMuted: false });
+    useRoutingStore.setState({ participantSpeech: true });
+  });
+
+  it('blocks mic frames during participant TTS and through the output-tail delay', () => {
+    const playback = fakePlayback();
+    let now = 10_000;
+    const blocked = participantMicGate(playback, 'electron', () => now);
+    expect(blocked()).toBe(false);
+
+    playback.queues.participant.pending = 1;
+    expect(blocked()).toBe(true);
+
+    playback.queues.participant.pending = 0;
+    now += PARTICIPANT_MIC_GUARD_TAIL_MS - 1;
+    expect(blocked()).toBe(true);
+
+    now += 1;
+    expect(blocked()).toBe(false);
+  });
+
+  it('does not block microphone when participant speech is off, even with a queued clip', () => {
+    const playback = fakePlayback();
+    playback.queues.participant.pending = 1;
+    const blocked = participantMicGate(playback, 'electron', () => 10_000);
+    useRoutingStore.setState({ participantSpeech: false });
+    expect(blocked()).toBe(false);
+  });
+
+  it('does not block for non-isolated whole-system capture', () => {
+    const playback = fakePlayback();
+    playback.queues.participant.pending = 1;
+    useAudioStore.setState({ selectedParticipantSource: { deviceId: 'desktop-audio-loopback', label: 'System' } });
+    expect(participantMicGate(playback, 'electron', () => 10_000)()).toBe(false);
+  });
+
+  it('does not block microphone on browser/extension sessions', () => {
+    const playback = fakePlayback();
+    playback.queues.participant.pending = 1;
+    expect(participantMicGate(playback, 'extension', () => 10_000)()).toBe(false);
+  });
+
+  it('wires the guard into the speaker capture mute setting, without muting the participant source', async () => {
+    const playback = fakePlayback();
+    await createAppCapture(playback, 'electron').openSource('speaker', live());
+    const settings = vi.mocked(openMic).mock.lastCall?.[0];
+    expect(settings?.muted()).toBe(false);
+    playback.queues.participant.pending = 1;
+    expect(settings?.muted()).toBe(true);
+    playback.queues.participant.pending = 0;
+    useRoutingStore.setState({ participantSpeech: false });
+    expect(settings?.muted()).toBe(false);
   });
 });
