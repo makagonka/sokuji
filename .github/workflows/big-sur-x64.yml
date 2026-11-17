@@ -1,0 +1,96 @@
+name: Big Sur x64 Build
+
+# Manual installer builds only. Run on branch big-sur-x64.
+# Do not build on every source change: each PKG upload is ~134 MiB.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: big-sur-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-bigsur-x64:
+    name: macOS 11 Intel package
+    # The default branch contains this workflow solely to expose Run workflow.
+    if: github.ref == 'refs/heads/big-sur-x64'
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies for Electron 37
+        run: npm install --no-audit --no-fund
+
+      - name: Verify Electron version
+        run: |
+          echo "Electron: $(node -p "require('electron/package.json').version")"
+          test "$(node -p "require('electron/package.json').version")" = "37.10.3"
+
+      - name: Run Big Sur compatibility tests
+        run: >-
+          npx vitest run
+          src/lib/modern-audio/participantSource.test.ts
+          src/components/MainPanel/panel/replayGate.test.ts
+          src/lib/audio/appCapture.test.ts
+
+      - name: Build Big Sur participant audio cable
+        run: bash scripts/build-bigsur-participant-driver.sh
+
+      - name: Verify participant cable
+        run: |
+          test -f resources/drivers/SokujiParticipantAudio.driver/Contents/MacOS/SokujiParticipantAudio
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' resources/drivers/SokujiParticipantAudio.driver/Contents/Info.plist
+          codesign --verify --deep --strict resources/drivers/SokujiParticipantAudio.driver
+          codesign -dv --verbose=2 resources/drivers/SokujiParticipantAudio.driver 2>&1 | grep -E 'Identifier|Signature|TeamIdentifier'
+
+      - name: Build renderer and main process
+        run: npm run build
+        env:
+          CI: "false"
+          VITE_BACKEND_URL: https://sokuji-api.kizuna.ai
+          VITE_ENVIRONMENT: production
+          VITE_ENABLE_KIZUNA_AI: "false"
+          VITE_ENABLE_LOCAL_NATIVE: "false"
+          VITE_ENABLED_PROVIDERS: ""
+          VITE_ENABLE_DEBUG: "true"
+          VITE_ENABLE_ANALYTICS: "false"
+
+      # Do not build the modern macOS audio-host helper here. It uses Core Audio
+      # process taps whose deployment target is macOS 14.2. Big Sur capture is
+      # implemented by the compatibility paths in electron/macos-audio-utils.js.
+      - name: Build unsigned Intel PKG
+        run: npx electron-builder --mac pkg --x64 --publish never -c.directories.output=out/bigsur
+        env:
+          CI: "false"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify Big Sur deployment target
+        run: |
+          APP="out/bigsur/mac/Sokuji.app"
+          if [ -d "$APP" ]; then
+            /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist"
+          fi
+          ls -lh out/bigsur/*.pkg
+          test -n "$(find out/bigsur -maxdepth 1 -name '*.pkg' -print -quit)"
+
+      - name: Upload Big Sur installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sokuji-0.43.4-BigSur-x64
+          path: out/bigsur/*.pkg
+          if-no-files-found: error
+          retention-days: 2
