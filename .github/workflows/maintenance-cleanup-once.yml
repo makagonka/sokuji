@@ -1,0 +1,40 @@
+name: One-time artifact cleanup
+on:
+  push:
+    branches: [big-sur-x64]
+    paths:
+      - .github/workflows/maintenance-cleanup-once.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel unintended full release build if still active
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/$GH_REPO/actions/runs/44055185435" --jq .status)"
+          if [ "$status" != "completed" ]; then
+            gh api -X POST "repos/$GH_REPO/actions/runs/44055185435/cancel" || true
+          fi
+
+      - name: Delete exactly three duplicate Big Sur installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/$GH_REPO/actions/artifacts/14212456219" --jq .name)"
+          test "$latest" = "Sokuji-0.43.4-BigSur-x64"
+          for artifact_id in 14212486164 14212480657 14212256609; do
+            name="$(gh api "repos/$GH_REPO/actions/artifacts/$artifact_id" --jq .name)"
+            test "$name" = "Sokuji-0.43.4-BigSur-x64"
+            gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$artifact_id"
+            echo "Deleted duplicate artifact ID $artifact_id"
+          done
