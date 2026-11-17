@@ -1,25 +1,22 @@
 name: Big Sur x64 Build
 
+# Manual installer builds only. Run on branch big-sur-x64.
+# Do not build on every source change: each PKG upload is ~134 MiB.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - big-sur-x64
-    paths:
-      - 'package.json'
-      - 'electron/**'
-      - 'src/**'
-      - 'resources/**'
-      - 'pkg-scripts/**'
-      - 'scripts/**'
-      - '.github/workflows/big-sur-x64.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: big-sur-installer-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-bigsur-x64:
     name: macOS 11 Intel package
+    # The default branch contains this workflow solely to expose Run workflow.
+    if: github.ref == 'refs/heads/big-sur-x64'
     runs-on: macos-15-intel
 
     steps:
@@ -96,4 +93,4 @@ jobs:
           name: Sokuji-0.43.4-BigSur-x64
           path: out/bigsur/*.pkg
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 2
